@@ -1,6 +1,7 @@
 import express from "express";
 import https from "https";
 import { constants } from "crypto";
+import iconv from "iconv-lite";
 
 const app = express();
 
@@ -13,9 +14,27 @@ app.get("/proxy", (req, res) => {
   });
 
   https.get(target, { agent }, (resp) => {
-    let data = "";
-    resp.on("data", (chunk) => (data += chunk));
-    resp.on("end", () => res.send(data));
+    const chunks = [];
+
+    resp.on("data", (chunk) => chunks.push(chunk));
+
+    resp.on("end", () => {
+      const buffer = Buffer.concat(chunks);
+
+      // Content-Type から charset を推定
+      const contentType = resp.headers["content-type"] || "";
+      let charset = "utf-8";
+
+      const match = contentType.match(/charset=([^;]+)/i);
+      if (match) {
+        charset = match[1].toLowerCase();
+      }
+
+      // Shift_JIS や EUC-JP を正しくデコード
+      const decoded = iconv.decode(buffer, charset);
+
+      res.send(decoded);
+    });
   }).on("error", (err) => {
     res.status(500).send(err.message);
   });
